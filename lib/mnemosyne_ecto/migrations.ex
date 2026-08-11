@@ -41,6 +41,14 @@ defmodule MnemosyneEcto.Migrations do
   """
   use Ecto.Migration
 
+  # Both adapter modules (Postgres/SQLite) are conditionally compiled depending on
+  # whether their optional deps (pgvector / sqlite_vec) are present in the project.
+  # `Adapter.for_repo/1` resolves the correct implementation at runtime from the
+  # repo's Ecto adapter, so the compile-time references below are legitimately
+  # to a module that may be absent (e.g. Postgres in a SQLite-only project).
+  # Silence the resulting "module is not available" warnings.
+  @compile {:no_warn_undefined, [MnemosyneEcto.Adapter.Postgres, MnemosyneEcto.Adapter.SQLite]}
+
   alias MnemosyneEcto.Adapter
 
   @version_modules %{
