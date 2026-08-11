@@ -56,7 +56,7 @@ defmodule MnemosyneEcto.MixProject do
       {:pgvector, "~> 0.3", optional: true},
       {:postgrex, ">= 0.0.0", optional: true},
       {:sqlite_vec, "~> 0.1", optional: true},
-      {:recode, "~> 0.8", only: [:dev], runtime: false},
+      {:recode, "~> 0.8", only: [:dev, :test], runtime: false},
       {:splode, "~> 0.3"},
       {:sycophant, "~> 0.1", only: [:dev, :test]},
       {:sobelow, "~> 0.14", only: [:dev, :test], runtime: false, warn_if_outdated: true},
