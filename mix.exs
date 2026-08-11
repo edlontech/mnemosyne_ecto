@@ -10,9 +10,6 @@ defmodule MnemosyneEcto.MixProject do
       elixir: "~> 1.19",
       test_coverage: [tool: ExCoveralls],
       docs: docs(),
-      dialyzer: [
-        plt_core_path: "_plts/core"
-      ],
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -49,7 +46,6 @@ defmodule MnemosyneEcto.MixProject do
       {:ecto_sql, "~> 3.13"},
       {:ecto_sqlite3, "~> 0.24", optional: true},
       {:ex_check, "~> 0.16", only: [:dev, :test], runtime: false},
-      {:ex_machina, "~> 2.8", only: :test},
       {:excoveralls, "~> 0.18", only: [:dev, :test]},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:assert_eventually, "~> 1.0", only: :test},
@@ -58,10 +54,12 @@ defmodule MnemosyneEcto.MixProject do
       {:mnemosyne, "~> 0.1"},
       {:oeditus_credo, "~> 0.8", only: [:dev], runtime: false},
       {:pgvector, "~> 0.3", optional: true},
-      {:postgrex, ">= 0.0.0"},
+      {:postgrex, ">= 0.0.0", optional: true},
+      {:sqlite_vec, "~> 0.1", optional: true},
       {:recode, "~> 0.8", only: [:dev], runtime: false},
       {:splode, "~> 0.3"},
       {:sycophant, "~> 0.1", only: [:dev, :test]},
+      {:sobelow, "~> 0.14", only: [:dev, :test], runtime: false, warn_if_outdated: true},
       {:telemetry, "~> 1.3"},
       {:tidewave, "~> 0.5", only: :dev, runtime: false},
       {:zoi, "~> 0.11"}
@@ -80,7 +78,7 @@ defmodule MnemosyneEcto.MixProject do
   defp docs do
     [
       main: "readme",
-      source_url: "https://github.com/edlontech/mnemosyne_postgres",
+      source_url: "https://github.com/edlontech/mnemosyne_ecto",
       extras: [
         {"README.md", title: "Overview"},
         {"LICENSE", title: "License"}
@@ -98,14 +96,15 @@ defmodule MnemosyneEcto.MixProject do
   defp elixirc_paths(_), do: ["lib"]
 
   defp description() do
-    "Ecto backend for the Mnemosyne agentic memory library."
+    "Database-agnostic Ecto backend (PostgreSQL/pgvector or SQLite/sqlite-vec) " <>
+      "for the Mnemosyne agentic memory library."
   end
 
   defp package() do
     [
       licenses: ["MIT"],
-      links: %{"GitHub" => "https://github.com/edlontech/mnemosyne_postgres"},
-      files: ~w(lib mix.exs README.md CHANGELOG.md LICENSE .formatter.exs)
+      links: %{"GitHub" => "https://github.com/edlontech/mnemosyne_ecto"},
+      files: ~w(lib priv mix.exs README.md CHANGELOG.md LICENSE .formatter.exs)
     ]
   end
 end

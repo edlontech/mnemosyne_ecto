@@ -4,20 +4,26 @@ defmodule MnemosyneEcto.Application do
   use Application
 
   @impl true
+  @doc false
   def start(_type, _args) do
     children = test_repo() ++ dev_children()
     opts = [strategy: :one_for_one, name: MnemosyneEcto.Supervisor]
     Supervisor.start_link(children, opts)
   end
 
+  @doc false
   if Mix.env() in [:dev, :test] do
     def test_repo do
-      []
+      [
+        MnemosyneEcto.TestRepo.Postgres,
+        MnemosyneEcto.TestRepo.SQLite
+      ]
     end
   else
     def test_repo, do: []
   end
 
+  @doc false
   if Mix.env() == :dev do
     def dev_children do
       if System.get_env("TIDEWAVE_REPL") == "true" and Code.ensure_loaded?(Bandit) do

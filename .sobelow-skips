@@ -1,0 +1,7 @@
+Config.HTTPS: HTTPS Not Enabled,config/prod.exs:0,2B5C077
+DOS.BinToAtom: Unsafe atom interpolation,lib/mnemosyne_ecto/adapter/postgres.ex:55,771EC77
+DOS.BinToAtom: Unsafe atom interpolation,lib/mnemosyne_ecto/adapter/sqlite.ex:59,5832705
+DOS.BinToAtom: Unsafe atom interpolation,lib/mnemosyne_ecto/migrations/v1.ex:16,1EC69D2
+DOS.BinToAtom: Unsafe atom interpolation,lib/mnemosyne_ecto/migrations/v1.ex:17,7505F54
+DOS.BinToAtom: Unsafe atom interpolation,lib/mnemosyne_ecto/migrations/v1.ex:59,2E5ECD3
+DOS.BinToAtom: Unsafe atom interpolation,lib/mnemosyne_ecto/migrations/v1.ex:60,20CC357

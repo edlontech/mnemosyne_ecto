@@ -23,7 +23,7 @@
   manifest: true,
   tasks: [
     # Tasks could be added by a tuple of the tasks module name and an options
-j   # keyword list. A task can be deactivated by `active: false`. The execution of
+    # keyword list. A task can be deactivated by `active: false`. The execution of
     # a deactivated task can be forced by calling `mix recode --task ModuleName`.
     {Recode.Task.AliasExpansion, []},
     {Recode.Task.AliasOrder, []},
