@@ -2,11 +2,12 @@ defmodule MnemosyneEcto.Migrations do
   @current_version 1
 
   @moduledoc """
-  Database-agnostic migrations for the MnemosyneEcto tables and indexes.
+  Database-agnostic migrations for MnemosyneEcto tables and indexes.
 
-  Write a single migration in your application; the correct DDL for your repo's
-  Ecto adapter (PostgreSQL/pgvector or SQLite/sqlite-vec) is emitted automatically
-  via `MnemosyneEcto.Adapter`.
+  Write one migration in your application. `MnemosyneEcto.Adapter` emits the
+  correct DDL for PostgreSQL with pgvector or SQLite with sqlite-vec. V1 creates
+  all three dynamically prefixed tables: graph nodes, node metadata, and permanent
+  ingestion records.
 
   ## Usage
 
@@ -17,27 +18,25 @@ defmodule MnemosyneEcto.Migrations do
         def down, do: MnemosyneEcto.Migrations.down(version: 1)
       end
 
-  When a new version is released, generate a new migration:
+  ## Clean-break reset
 
-      defmodule MyApp.Repo.Migrations.UpgradeMnemosyneV2 do
-        use Ecto.Migration
-
-        def up, do: MnemosyneEcto.Migrations.up(version: 2, embedding_dimensions: 1536)
-        def down, do: MnemosyneEcto.Migrations.down(version: 2)
-      end
+  V1 was rewritten for durable ingestion records. Existing MnemosyneEcto tables
+  or databases from pre-ingestion versions must be dropped and recreated. The
+  current version remains `1`; there is no V2 upgrade, data conversion, session
+  compatibility, or dual read/write path.
 
   ## Options
 
     * `:version` - the target migration version (defaults to `#{@current_version}`)
-    * `:embedding_dimensions` - (required for V1) the dimensionality of your embedding vectors
+    * `:embedding_dimensions` - required for V1; dimensionality of embedding vectors
     * `:index_type` - PostgreSQL only: `:hnsw` (default) or `:ivfflat`
-    * `:hnsw_m` - PostgreSQL only: max number of connections per layer for HNSW
-    * `:hnsw_ef_construction` - PostgreSQL only: size of the dynamic candidate list for HNSW
+    * `:hnsw_m` - PostgreSQL only: max number of connections per HNSW layer
+    * `:hnsw_ef_construction` - PostgreSQL only: dynamic candidate list size for HNSW
     * `:ivfflat_lists` - PostgreSQL only: number of inverted lists for IVFFlat
     * `:prefix` - table name prefix, defaults to `"mnemosyne_"`
 
-  SQLite uses a brute-force `vec_distance_cosine` scan, so the PostgreSQL-only
-  index options are ignored for SQLite repos.
+  SQLite uses a brute-force `vec_distance_cosine` scan, so PostgreSQL-only index
+  options are ignored for SQLite repos.
   """
   use Ecto.Migration
 

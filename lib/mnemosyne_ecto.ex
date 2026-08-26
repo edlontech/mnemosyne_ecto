@@ -2,22 +2,37 @@ defmodule MnemosyneEcto do
   @moduledoc """
   Database-agnostic Ecto backend for the Mnemosyne agentic memory library.
 
-  Provides a `Mnemosyne.GraphBackend` implementation (`MnemosyneEcto.Backend`)
-  that runs on either of two vector-capable database engines, selected purely by
-  the Ecto adapter of the repository you configure:
+  Provides `MnemosyneEcto.Backend`, a `Mnemosyne.GraphBackend` implementation for
+  PostgreSQL with pgvector or SQLite with sqlite-vec. The configured Ecto adapter
+  selects the engine; `MnemosyneEcto.Adapter` contains engine-specific vector,
+  migration, and extension behavior.
 
-    * **PostgreSQL + pgvector** — `Ecto.Adapters.Postgres` (requires `:pgvector`)
-    * **SQLite + sqlite-vec** — `Ecto.Adapters.SQLite3` (requires `:sqlite_vec`)
+  Graph nodes, node metadata, and permanent ingestion records use three
+  dynamically prefixed tables. Ingestion records are scoped by tenant, repository,
+  and source ID. They preserve a payload digest, fingerprint version, ordered node
+  IDs, and microsecond stored timestamp without a graph foreign key, so receipts
+  survive graph-node deletion.
 
-  Memory graph nodes, edges, and metadata are stored via Ecto schemas with
-  multi-tenant isolation through a configurable table prefix. All engine-specific
-  behaviour (vector column type, similarity queries, migrations, extension setup)
-  lives behind `MnemosyneEcto.Adapter` and is resolved at runtime from the repo.
+  ## Trajectory ingestion
+
+  Configure `MnemosyneEcto.Backend` normally, then submit caller-owned complete
+  trajectories through `Mnemosyne.ingest/3`. It blocks until graph changes and the
+  durable receipt are stored, or returns an error. The returned node IDs are
+  immediately queryable. Equal retries return the exact original receipt;
+  conflicting source reuse returns an ingestion error. Database uniqueness selects
+  the concurrent winner, making receipts durable across restarts and independent
+  across tenants and repositories.
+
+  PostgreSQL and SQLite have equivalent observable behavior. SQLite retries one
+  complete rolled-back transaction only for Exqlite's locked `"Database busy"`
+  error; a second or nonmatching error is a `StorageError`.
+
+  `MnemosyneEcto.Telemetry` documents the `get_ingestion` and `commit_ingestion`
+  spans, including correlation, status, and numeric count measurements.
 
   ## Choosing a database
 
-  You choose the database by configuring your own `Ecto.Repo` with the desired
-  adapter — nothing else changes:
+  Configure your own `Ecto.Repo` with the desired adapter:
 
       # PostgreSQL
       defmodule MyApp.Repo do
@@ -33,21 +48,22 @@ defmodule MnemosyneEcto do
 
   ## Setup
 
-      # Set as default backend in your supervision tree
       {Mnemosyne.Supervisor,
         config: config,
         llm: MyApp.LLM,
         embedding: MyApp.Embedding,
         backend: {MnemosyneEcto.Backend, repo: MyApp.Repo}}
 
-      # Open repos -- repo_id is injected from the first argument
+      # The configured backend defaults tenant_id to "default".
       Mnemosyne.open_repo("my-project")
-      Mnemosyne.open_repo("my-project", tenant_id: "org-123")
+
+      Mnemosyne.open_repo("my-project",
+        backend: {MnemosyneEcto.Backend, repo: MyApp.Repo, tenant_id: "org-123"}
+      )
 
   ## Migrations
 
-  Write a single migration; `MnemosyneEcto.Migrations` emits the correct DDL for
-  whichever adapter your repo uses:
+  A V1 migration creates all three tables for either adapter:
 
       defmodule MyApp.Repo.Migrations.SetupMnemosyne do
         use Ecto.Migration
@@ -55,5 +71,10 @@ defmodule MnemosyneEcto do
         def up, do: MnemosyneEcto.Migrations.up(version: 1, embedding_dimensions: 1536)
         def down, do: MnemosyneEcto.Migrations.down(version: 1)
       end
+
+  This is a clean break. Drop and recreate MnemosyneEcto tables or databases from
+  pre-ingestion versions. V1 was rewritten in place: `current_version/0` remains
+  `1`, with no V2 upgrade, data conversion, session compatibility, or dual
+  read/write path.
   """
 end

@@ -1,19 +1,19 @@
 # MnemosyneEcto
 
+**NOTE**: Mnemosyne is on heavy development, expect breaking changes
+
 Database-agnostic Ecto backend for [Mnemosyne](https://github.com/edlontech/mnemosyne), the task-agnostic agentic memory library.
 
-This library implements the `Mnemosyne.GraphBackend` behaviour and runs on either of two vector-capable engines — you pick which one simply by configuring your `Ecto.Repo`:
+This library implements the `Mnemosyne.GraphBackend` behaviour and runs on either of two vector-capable engines. Configure your `Ecto.Repo` to choose the engine:
 
 | Engine | Ecto adapter | Vector support | Required dep |
 |--------|--------------|----------------|--------------|
 | **PostgreSQL** | `Ecto.Adapters.Postgres` | [pgvector](https://github.com/pgvector/pgvector) (HNSW / IVFFlat) | `:pgvector` |
 | **SQLite** | `Ecto.Adapters.SQLite3` | [sqlite-vec](https://github.com/asg017/sqlite-vec) (brute-force cosine) | `:sqlite_vec` |
 
-The active engine is resolved at runtime from `repo.__adapter__()`; all engine-specific behaviour (vector column type, similarity queries, migrations, extension setup) lives behind `MnemosyneEcto.Adapter`.
+The active engine is resolved at runtime from `repo.__adapter__()`. Engine-specific vector columns, similarity queries, migrations, and extension setup live behind `MnemosyneEcto.Adapter`.
 
 ## Installation
-
-Add `mnemosyne_ecto` plus the driver/vector deps for the database you intend to use:
 
 ```elixir
 def deps do
@@ -67,7 +67,7 @@ config :my_app, MyApp.Repo,
 
 ### 1. Create a migration
 
-Write a single migration — the correct DDL for your repo's adapter is emitted automatically:
+Write a single migration. The correct DDL for your repo's adapter is emitted automatically, creating graph nodes, node metadata, and permanent ingestion records:
 
 ```elixir
 defmodule MyApp.Repo.Migrations.AddMnemosyne do
@@ -85,16 +85,16 @@ end
 | `:version` | `1` | Target migration version |
 | `:embedding_dimensions` | -- (required) | Dimensionality of your embedding vectors |
 | `:prefix` | `"mnemosyne_"` | Table name prefix |
-| `:index_type` | `:hnsw` | **PostgreSQL only** — `:hnsw` or `:ivfflat` |
-| `:hnsw_m` | pgvector default | **PostgreSQL only** — max connections per HNSW layer |
-| `:hnsw_ef_construction` | pgvector default | **PostgreSQL only** — dynamic candidate list size for HNSW |
-| `:ivfflat_lists` | pgvector default | **PostgreSQL only** — number of inverted lists for IVFFlat |
+| `:index_type` | `:hnsw` | **PostgreSQL only**: `:hnsw` or `:ivfflat` |
+| `:hnsw_m` | pgvector default | **PostgreSQL only**: max connections per HNSW layer |
+| `:hnsw_ef_construction` | pgvector default | **PostgreSQL only**: dynamic candidate list size for HNSW |
+| `:ivfflat_lists` | pgvector default | **PostgreSQL only**: number of inverted lists for IVFFlat |
 
-> SQLite uses a brute-force `vec_distance_cosine` scan (which honours the tenant/repo/type SQL filters), so the PostgreSQL-only index options are ignored for SQLite repos.
+> SQLite uses a brute-force `vec_distance_cosine` scan that honors tenant, repository, and type SQL filters. PostgreSQL-only index options are ignored for SQLite repos.
 
 ### 2. Configure the backend
 
-Set the default backend in your supervision tree so you don't repeat it on every `open_repo` call:
+Set the default backend in your supervision tree so you do not repeat it on every `open_repo` call:
 
 ```elixir
 children = [
@@ -106,14 +106,17 @@ children = [
 ]
 ```
 
-Then open repos — `repo_id` is injected automatically from the first argument:
+Then open a repo. `repo_id` is injected automatically from the first argument:
 
 ```elixir
-# Single-tenant (tenant_id defaults to "default")
+# Single-tenant (the configured backend defaults tenant_id to "default")
 {:ok, _pid} = Mnemosyne.open_repo("my-project")
 
-# Multi-tenant
-{:ok, _pid} = Mnemosyne.open_repo("my-project", tenant_id: "org-123")
+# Multi-tenant (override the backend for this repository)
+{:ok, _pid} =
+  Mnemosyne.open_repo("my-project",
+    backend: {MnemosyneEcto.Backend, repo: MyApp.Repo, tenant_id: "org-123"}
+  )
 ```
 
 #### Backend options
@@ -125,40 +128,45 @@ Then open repos — `repo_id` is injected automatically from the first argument:
 | `:tenant_id` | `"default"` | Tenant identifier for multi-tenant isolation |
 | `:prefix` | `"mnemosyne_"` | Table name prefix (must match migration) |
 
-## Storage Model
+## Trajectory ingestion
 
-Nodes are stored in a single polymorphic `nodes` table with JSON `data`, a vector `embedding`, and JSON `links` maps. Metadata lives in a separate `node_metadata` table. The schema is identical across engines; only the embedding column type differs (`vector(N)` on PostgreSQL, `float[N]` float32 blob on SQLite).
+Use the public `Mnemosyne.ingest/3` API with a caller-owned completed `%Mnemosyne.Trajectory{}`. Through ordinary `MnemosyneEcto.Backend` configuration, it is a blocking stored-or-error boundary. On success, every returned node ID is immediately visible:
 
+```elixir
+trajectory = %Mnemosyne.Trajectory{
+  source_id: "deploy-2026-08-26",
+  goal: "Deploy the service",
+  steps: [%{observation: "Health checks passed", action: "Completed deployment"}]
+}
+
+{:ok, receipt} = Mnemosyne.ingest("my-project", trajectory)
+
+Enum.each(receipt.node_ids, fn node_id ->
+  {:ok, _node} = Mnemosyne.get_node("my-project", node_id)
+end)
 ```
-nodes                          node_metadata
-+-----------+-----------+      +-------------+----------+
-| id (text) | type      |      | node_id     | accessed |
-| data      | embedding |      | reward      | recency  |
-| links     | tenant_id |      | frequency   |          |
-| repo_id   | created   |      +-------------+----------+
-+-----------+-----------+
-```
+
+The source key is scoped to the tenant, repository, and `source_id`. An equal retry returns the exact original receipt. Reusing that source ID with a different payload returns an ingestion conflict error without changing stored memory. The database is authoritative for concurrent callers: one writer stores the graph and receipt, and equal callers receive that stored receipt. Receipts survive repository restarts and graph-node deletion; an equal retry after deletion returns the historical receipt without recreating nodes. The same source ID remains independent across tenants and repositories.
+
+PostgreSQL and SQLite expose the same behavior. SQLite internally retries one complete rolled-back transaction only when Exqlite raises its locked `"Database busy"` error. A second busy error or any nonmatching error remains a `StorageError`.
+
+## Storage model
+
+The configured prefix creates three tables:
+
+| Table | Purpose |
+|-------|---------|
+| `#{prefix}nodes` | Graph nodes with JSON data, vector embedding, and JSON links. |
+| `#{prefix}node_metadata` | Access and reward metadata for graph nodes. |
+| `#{prefix}ingestions` | Permanent ingestion records keyed by `tenant_id`, `repo_id`, and `source_id`. |
+
+Each ingestion record stores the payload digest, fingerprint version, ordered node IDs, and a microsecond-precision stored timestamp. It intentionally has no graph foreign key: receipt node IDs are historical output, so the receipt remains valid when graph nodes are deleted, decayed, consolidated, or repaired.
 
 On PostgreSQL, vector indexes (HNSW or IVFFlat) are created per node type via partial indexes, avoiding the performance penalty of post-filtering across the full table. On SQLite, similarity search is an exact brute-force scan.
 
-## Versioned Migrations
-
-When a new schema version is released, create a new migration pointing to the next version:
-
-```elixir
-defmodule MyApp.Repo.Migrations.UpgradeMnemosyneV2 do
-  use Ecto.Migration
-
-  def up, do: MnemosyneEcto.Migrations.up(version: 2, embedding_dimensions: 1536)
-  def down, do: MnemosyneEcto.Migrations.down(version: 2)
-end
-```
-
-The migration system tracks the current version (via a table comment on PostgreSQL, a `<prefix>schema_version` table on SQLite) and runs only the deltas.
-
 ## Telemetry
 
-All backend operations emit `[:mnemosyne_ecto, ...]` telemetry events. See `MnemosyneEcto.Telemetry` for the full list of events and their measurements.
+`MnemosyneEcto.Telemetry` documents `get_ingestion` and `commit_ingestion` spans. They include tenant, repository, and source correlation; status metadata; and numeric record and node counts without payload or receipt contents.
 
 ## License
 
