@@ -5,7 +5,7 @@ defmodule MnemosyneEcto.MigrationsTest do
 
   describe "current_version/0" do
     test "returns the current migration version" do
-      assert Migrations.current_version() >= 1
+      assert Migrations.current_version() == 1
     end
   end
 
@@ -77,6 +77,65 @@ defmodule MnemosyneEcto.Migrations.PostgresTest do
     end
   end
 
+  describe "mnemosyne_ingestions table" do
+    test "has non-null durable receipt columns and a composite primary key", %{repo: repo} do
+      {:ok, %{rows: rows}} =
+        repo.query(
+          "SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = 'mnemosyne_ingestions' ORDER BY ordinal_position"
+        )
+
+      columns = Map.new(rows, fn [name, type, nullable] -> {name, {type, nullable}} end)
+
+      assert columns == %{
+               "tenant_id" => {"text", "NO"},
+               "repo_id" => {"text", "NO"},
+               "source_id" => {"text", "NO"},
+               "payload_digest" => {"bytea", "NO"},
+               "fingerprint_version" => {"integer", "NO"},
+               "node_ids" => {"ARRAY", "NO"},
+               "stored_at" => {"timestamp with time zone", "NO"}
+             }
+
+      {:ok, %{rows: primary_key}} =
+        repo.query("""
+        SELECT kcu.column_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name = kcu.constraint_name
+        WHERE tc.table_name = 'mnemosyne_ingestions'
+          AND tc.constraint_type = 'PRIMARY KEY'
+        ORDER BY kcu.ordinal_position
+        """)
+
+      assert primary_key == [["tenant_id"], ["repo_id"], ["source_id"]]
+
+      {:ok, %{rows: node_ids_type}} =
+        repo.query("""
+        SELECT format_type(attribute.atttypid, attribute.atttypmod)
+        FROM pg_attribute attribute
+        JOIN pg_class relation ON relation.oid = attribute.attrelid
+        WHERE relation.relname = 'mnemosyne_ingestions'
+          AND attribute.attname = 'node_ids'
+          AND attribute.attnum > 0
+          AND NOT attribute.attisdropped
+        """)
+
+      assert node_ids_type == [["text[]"]]
+    end
+
+    test "has no foreign keys", %{repo: repo} do
+      {:ok, %{rows: rows}} =
+        repo.query("""
+        SELECT constraint_name
+        FROM information_schema.table_constraints
+        WHERE table_name = 'mnemosyne_ingestions'
+          AND constraint_type = 'FOREIGN KEY'
+        """)
+
+      assert rows == []
+    end
+  end
+
   describe "indexes" do
     test "has a btree index on tenant_id, repo_id, type", %{repo: repo} do
       {:ok, %{rows: rows}} =
@@ -119,10 +178,16 @@ defmodule MnemosyneEcto.Migrations.SQLiteTest do
   test "has the expected tables, columns, and schema version", %{repo: repo} do
     {:ok, %{rows: node_rows}} = repo.query("PRAGMA table_info(mnemosyne_nodes)")
     {:ok, %{rows: metadata_rows}} = repo.query("PRAGMA table_info(mnemosyne_node_metadata)")
+    {:ok, %{rows: ingestion_rows}} = repo.query("PRAGMA table_info(mnemosyne_ingestions)")
     {:ok, %{rows: [[1]]}} = repo.query("SELECT version FROM mnemosyne_schema_version")
 
     node_columns = MapSet.new(Enum.map(node_rows, &Enum.at(&1, 1)))
     metadata_columns = MapSet.new(Enum.map(metadata_rows, &Enum.at(&1, 1)))
+
+    ingestion_columns =
+      Map.new(ingestion_rows, fn [_, name, type, not_null, _, primary_key] ->
+        {name, {type, not_null, primary_key}}
+      end)
 
     assert MapSet.subset?(
              MapSet.new(~W(id tenant_id repo_id type data embedding links created_at)),
@@ -135,5 +200,18 @@ defmodule MnemosyneEcto.Migrations.SQLiteTest do
              ),
              metadata_columns
            )
+
+    assert ingestion_columns == %{
+             "tenant_id" => {"TEXT", 1, 1},
+             "repo_id" => {"TEXT", 1, 2},
+             "source_id" => {"TEXT", 1, 3},
+             "payload_digest" => {"BLOB", 1, 0},
+             "fingerprint_version" => {"INTEGER", 1, 0},
+             "node_ids" => {"TEXT", 1, 0},
+             "stored_at" => {"TEXT", 1, 0}
+           }
+
+    {:ok, %{rows: foreign_keys}} = repo.query("PRAGMA foreign_key_list(mnemosyne_ingestions)")
+    assert foreign_keys == []
   end
 end

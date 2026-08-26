@@ -12,7 +12,7 @@ defmodule MnemosyneEcto.Migrations.V1 do
 
   alias MnemosyneEcto.Adapter
 
-  @doc "Runs the V1 up migration creating nodes and metadata tables."
+  @doc "Runs the V1 up migration creating nodes, node metadata, and ingestion tables."
   @spec up(keyword()) :: any()
   def up(opts) do
     prefix = Keyword.get(opts, :prefix, "mnemosyne_")
@@ -23,6 +23,7 @@ defmodule MnemosyneEcto.Migrations.V1 do
 
     nodes_table = :"#{prefix}nodes"
     metadata_table = :"#{prefix}node_metadata"
+    ingestions_table = :"#{prefix}ingestions"
 
     adapter.setup(opts)
 
@@ -54,16 +55,27 @@ defmodule MnemosyneEcto.Migrations.V1 do
       add :reward_count, :integer, null: false, default: 0
     end
 
+    create table(ingestions_table, primary_key: false) do
+      add :tenant_id, :text, null: false, primary_key: true
+      add :repo_id, :text, null: false, primary_key: true
+      add :source_id, :text, null: false, primary_key: true
+      add :payload_digest, :binary, null: false
+      add :fingerprint_version, :integer, null: false
+      add :node_ids, {:array, :text}, null: false
+      add :stored_at, datetime_type, null: false
+    end
+
     create index(nodes_table, [:tenant_id, :repo_id, :type])
 
     adapter.create_vector_indexes(nodes_table, opts)
   end
 
-  @doc "Rolls back the V1 migration, dropping nodes and metadata tables."
+  @doc "Rolls back the V1 migration, dropping ingestion, node metadata, and nodes tables."
   @spec down(keyword()) :: any()
   def down(opts) do
     prefix = Keyword.get(opts, :prefix, "mnemosyne_")
 
+    drop_if_exists table(:"#{prefix}ingestions")
     drop_if_exists table(:"#{prefix}node_metadata")
     drop_if_exists table(:"#{prefix}nodes")
   end
