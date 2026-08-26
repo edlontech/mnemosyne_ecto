@@ -3,8 +3,15 @@ defmodule MnemosyneEcto.Backend do
   Database-agnostic Ecto implementation of `Mnemosyne.GraphBackend`.
 
   Persists knowledge graph nodes in a single polymorphic `nodes` table with JSON
-  `data`, vector embeddings, and JSON link maps. Metadata is stored in a separate
-  `node_metadata` table.
+  `data`, vector embeddings, and JSON link maps. Metadata and durable ingestion
+  receipts are stored in separate tables.
+
+  `get_ingestion/2` returns the scoped durable record or `nil` without changing
+  backend state. `commit_ingestion/3` atomically arbitrates a scoped source record
+  and its graph changes. New sources return `:inserted`; equal digest and fingerprint retries
+  return `:existing` with the original durable receipt and do not apply the
+  supplied graph. Conflicting retries return `IngestionError`, while database or
+  graph persistence failures return `StorageError`.
 
   The concrete database engine is resolved automatically from the configured
   repository's Ecto adapter:
@@ -21,8 +28,10 @@ defmodule MnemosyneEcto.Backend do
   ## Error handling
 
   Callbacks whose behaviour spec includes `{:error, ...}` returns
-  (`apply_changeset`, `delete_nodes`, `find_candidates`, `get_nodes_by_type`)
-  catch exceptions and return `{:error, StorageError.t()}`. Callbacks that
+  (`apply_changeset`, `get_ingestion`, `commit_ingestion`, `delete_nodes`,
+  `find_candidates`, `get_nodes_by_type`) catch exceptions and return
+  `{:error, StorageError.t()}`. `commit_ingestion` returns `IngestionError` for a
+  durable source conflict instead. Callbacks that
   only define `{:ok, ...}` returns (`get_node`, `get_linked_nodes`,
   `get_metadata`, `update_metadata`, `delete_metadata`) let exceptions
   propagate, as the caller is expected to handle crashes via supervision.
@@ -35,12 +44,15 @@ defmodule MnemosyneEcto.Backend do
   require Logger
 
   alias Mnemosyne.Errors.Framework.StorageError
+  alias Mnemosyne.Errors.Invalid.IngestionError
   alias Mnemosyne.Graph.Edge
   alias Mnemosyne.Graph.Node, as: NodeProtocol
   alias Mnemosyne.Graph.Similarity
   alias Mnemosyne.NodeMetadata
   alias MnemosyneEcto.Adapter
+  alias MnemosyneEcto.IngestionSerializer
   alias MnemosyneEcto.NodeSerializer
+  alias MnemosyneEcto.Queries.IngestionQueries
   alias MnemosyneEcto.Queries.MetadataQueries
   alias MnemosyneEcto.Queries.NodeQueries
   alias MnemosyneEcto.Telemetry
@@ -64,16 +76,33 @@ defmodule MnemosyneEcto.Backend do
   end
 
   @impl true
+  def get_ingestion(source_id, state) do
+    row = state |> IngestionQueries.for_source(source_id) |> state.repo.one()
+    record = if row, do: IngestionSerializer.from_row(row)
+    {:ok, record, state}
+  rescue
+    exception ->
+      Logger.error("get_ingestion failed: #{Exception.message(exception)}")
+      {:error, storage_error(:get_ingestion, exception)}
+  end
+
+  @impl true
+  def commit_ingestion(record, changeset, state) do
+    state.repo.transaction(fn -> commit_ingestion_transaction(record, changeset, state) end)
+    |> normalize_commit_result(state)
+  rescue
+    exception ->
+      Logger.error("commit_ingestion failed: #{Exception.message(exception)}")
+      {:error, storage_error(:commit_ingestion, exception)}
+  end
+
+  @impl true
   def apply_changeset(changeset, state) do
     metadata = %{tenant_id: state.tenant_id, repo_id: state.repo_id}
 
     Telemetry.span(:apply_changeset, metadata, fn ->
       result =
-        state.repo.transaction(fn ->
-          insert_nodes(changeset.additions, state)
-          apply_links(changeset.links, state)
-          upsert_metadata(changeset.metadata, state)
-        end)
+        state.repo.transaction(fn -> persist_changeset(changeset, state) end)
         |> case do
           {:ok, _} -> {:ok, state}
           {:error, reason} -> {:error, storage_error(:apply_changeset, reason)}
@@ -295,6 +324,80 @@ defmodule MnemosyneEcto.Backend do
       [] -> :ok
       keys -> {:error, storage_error(:init, "missing required options: #{inspect(keys)}")}
     end
+  end
+
+  defp commit_ingestion_transaction(record, changeset, state) do
+    row = IngestionSerializer.to_row(record, state.tenant_id, state.repo_id)
+
+    case insert_ingestion(row, state) do
+      1 ->
+        persist_changeset(changeset, state)
+        stored = fetch_ingestion!(record.source_id, state)
+        {:inserted, stored.receipt}
+
+      0 ->
+        resolve_existing_ingestion(record, state)
+
+      count ->
+        state.repo.rollback(storage_error(:commit_ingestion, {:unexpected_insert_count, count}))
+    end
+  end
+
+  defp resolve_existing_ingestion(record, state) do
+    stored = fetch_ingestion!(record.source_id, state)
+
+    if same_payload?(stored, record) do
+      {:existing, stored.receipt}
+    else
+      state.repo.rollback(
+        IngestionError.exception(source_id: record.source_id, reason: :source_conflict)
+      )
+    end
+  end
+
+  defp normalize_commit_result({:ok, {status, receipt}}, state) do
+    {:ok, status, receipt, state}
+  end
+
+  defp normalize_commit_result({:error, %IngestionError{} = error}, _state), do: {:error, error}
+  defp normalize_commit_result({:error, %StorageError{} = error}, _state), do: {:error, error}
+
+  defp normalize_commit_result({:error, reason}, _state) do
+    {:error, storage_error(:commit_ingestion, reason)}
+  end
+
+  defp insert_ingestion(row, state) do
+    {count, _rows} =
+      state.repo.insert_all(IngestionQueries.source(state), [row],
+        on_conflict: :nothing,
+        conflict_target: [:tenant_id, :repo_id, :source_id]
+      )
+
+    count
+  end
+
+  defp fetch_ingestion!(source_id, state) do
+    case state |> IngestionQueries.for_source(source_id) |> state.repo.one() do
+      nil ->
+        state.repo.rollback(
+          storage_error(:commit_ingestion, "ingestion record missing after insert arbitration")
+        )
+
+      row ->
+        IngestionSerializer.from_row(row)
+    end
+  end
+
+  defp same_payload?(stored, supplied) do
+    stored.fingerprint_version == supplied.fingerprint_version and
+      stored.payload_digest == supplied.payload_digest
+  end
+
+  defp persist_changeset(changeset, state) do
+    insert_nodes(changeset.additions, state)
+    apply_links(changeset.links, state)
+    upsert_metadata(changeset.metadata, state)
+    :ok
   end
 
   defp insert_nodes([], _state), do: :ok

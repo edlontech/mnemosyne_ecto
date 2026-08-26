@@ -51,7 +51,7 @@ defmodule MnemosyneEcto.MixProject do
       {:assert_eventually, "~> 1.0", only: :test},
       {:mimic, "~> 2.0", only: :test},
       {:mix_audit, ">= 0.0.0", only: [:dev, :test], runtime: false},
-      {:mnemosyne, "~> 0.1"},
+      {:mnemosyne, github: "edlontech/mnemosyne", branch: "main"},
       {:oeditus_credo, "~> 0.8", only: [:dev], runtime: false},
       {:pgvector, "~> 0.3", optional: true},
       {:postgrex, ">= 0.0.0", optional: true},
