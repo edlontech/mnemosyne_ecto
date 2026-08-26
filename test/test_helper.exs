@@ -1,3 +1,5 @@
+Mimic.copy(Mnemosyne.Pipeline.Ingestion)
+
 ExUnit.start(exclude: [:integration], capture_log: true)
 
 Ecto.Adapters.SQL.Sandbox.mode(MnemosyneEcto.TestRepo.Postgres, :manual)
