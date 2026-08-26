@@ -18,7 +18,7 @@ The active engine is resolved at runtime from `repo.__adapter__()`. Engine-speci
 ```elixir
 def deps do
   [
-    {:mnemosyne_ecto, "~> 0.1.0"}, # x-release-please-version
+    {:mnemosyne_ecto, "~> 0.2.0"}, # x-release-please-version
 
     # For PostgreSQL:
     {:postgrex, ">= 0.0.0"},

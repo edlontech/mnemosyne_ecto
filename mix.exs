@@ -6,7 +6,7 @@ defmodule MnemosyneEcto.MixProject do
       app: :mnemosyne_ecto,
       description: description(),
       package: package(),
-      version: "0.1.0",
+      version: "0.2.0",
       elixir: "~> 1.19",
       test_coverage: [tool: ExCoveralls],
       docs: docs(),
