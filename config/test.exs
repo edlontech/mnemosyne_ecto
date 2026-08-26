@@ -13,6 +13,7 @@ config :mnemosyne_ecto, MnemosyneEcto.TestRepo.Postgres,
 config :mnemosyne_ecto, MnemosyneEcto.TestRepo.SQLite,
   database: Path.expand("../priv/sqlite/mnemosyne_ecto_test.db", __DIR__),
   pool: Ecto.Adapters.SQL.Sandbox,
-  pool_size: 1,
+  pool_size: 5,
   priv: "priv/repo/sqlite",
-  journal_mode: :wal
+  journal_mode: :wal,
+  busy_timeout: 5_000

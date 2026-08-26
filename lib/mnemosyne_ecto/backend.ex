@@ -113,7 +113,7 @@ defmodule MnemosyneEcto.Backend do
     Telemetry.span(:commit_ingestion, metadata, fn ->
       result =
         try do
-          state.repo.transaction(fn -> commit_ingestion_transaction(record, changeset, state) end)
+          commit_ingestion_with_retry(record, changeset, state)
           |> normalize_commit_result(state)
         rescue
           exception ->
@@ -368,6 +368,18 @@ defmodule MnemosyneEcto.Backend do
     case missing do
       [] -> :ok
       keys -> {:error, storage_error(:init, "missing required options: #{inspect(keys)}")}
+    end
+  end
+
+  defp commit_ingestion_with_retry(record, changeset, state) do
+    attempt = fn ->
+      state.repo.transaction(fn -> commit_ingestion_transaction(record, changeset, state) end)
+    end
+
+    try do
+      attempt.()
+    catch
+      :error, %{__struct__: Exqlite.Error, message: "Database busy"} -> attempt.()
     end
   end
 
