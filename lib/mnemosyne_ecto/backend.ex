@@ -77,23 +77,68 @@ defmodule MnemosyneEcto.Backend do
 
   @impl true
   def get_ingestion(source_id, state) do
-    row = state |> IngestionQueries.for_source(source_id) |> state.repo.one()
-    record = if row, do: IngestionSerializer.from_row(row)
-    {:ok, record, state}
-  rescue
-    exception ->
-      Logger.error("get_ingestion failed: #{Exception.message(exception)}")
-      {:error, storage_error(:get_ingestion, exception)}
+    metadata = %{tenant_id: state.tenant_id, repo_id: state.repo_id, source_id: source_id}
+
+    Telemetry.span(:get_ingestion, metadata, fn ->
+      result =
+        try do
+          row = state |> IngestionQueries.for_source(source_id) |> state.repo.one()
+          record = if row, do: IngestionSerializer.from_row(row)
+          {:ok, record, state}
+        rescue
+          exception ->
+            Logger.error("get_ingestion failed: #{Exception.message(exception)}")
+            {:error, storage_error(:get_ingestion, exception)}
+        end
+
+      {status, record_count} =
+        case result do
+          {:ok, nil, _state} -> {:missing, 0}
+          {:ok, _record, _state} -> {:found, 1}
+          {:error, _error} -> {:error, 0}
+        end
+
+      {result, %{record_count: record_count}, Map.put(metadata, :status, status)}
+    end)
   end
 
   @impl true
   def commit_ingestion(record, changeset, state) do
-    state.repo.transaction(fn -> commit_ingestion_transaction(record, changeset, state) end)
-    |> normalize_commit_result(state)
-  rescue
-    exception ->
-      Logger.error("commit_ingestion failed: #{Exception.message(exception)}")
-      {:error, storage_error(:commit_ingestion, exception)}
+    metadata = %{
+      tenant_id: state.tenant_id,
+      repo_id: state.repo_id,
+      source_id: record.source_id
+    }
+
+    Telemetry.span(:commit_ingestion, metadata, fn ->
+      result =
+        try do
+          state.repo.transaction(fn -> commit_ingestion_transaction(record, changeset, state) end)
+          |> normalize_commit_result(state)
+        rescue
+          exception ->
+            Logger.error("commit_ingestion failed: #{Exception.message(exception)}")
+            {:error, storage_error(:commit_ingestion, exception)}
+        end
+
+      {status, record_inserted, nodes_inserted} =
+        case result do
+          {:ok, :inserted, _receipt, _state} ->
+            {:inserted, 1, length(changeset.additions)}
+
+          {:ok, :existing, _receipt, _state} ->
+            {:existing, 0, 0}
+
+          {:error, %IngestionError{}} ->
+            {:conflict, 0, 0}
+
+          {:error, _error} ->
+            {:error, 0, 0}
+        end
+
+      measurements = %{record_inserted: record_inserted, nodes_inserted: nodes_inserted}
+      {result, measurements, Map.put(metadata, :status, status)}
+    end)
   end
 
   @impl true
