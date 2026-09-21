@@ -15,6 +15,8 @@ defmodule MnemosyneEcto.Schema.NodeMetadata do
   schema "mnemosyne_node_metadata" do
     field :tenant_id, :string, primary_key: true
     field :node_id, :string, primary_key: true
+    field :audience, :binary
+    field :custom, :map, default: %{}
     field :access_count, :integer, default: 0
     field :last_accessed_at, :utc_datetime_usec
     field :created_at, :utc_datetime_usec

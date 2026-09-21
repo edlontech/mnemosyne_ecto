@@ -13,6 +13,11 @@ defmodule MnemosyneEcto.Backend do
   supplied graph. Conflicting retries return `IngestionError`, while database or
   graph persistence failures return `StorageError`.
 
+  Node audiences and caller-owned custom metadata persist across all write paths.
+  A database-conditional upsert permits first classification but rejects changes
+  or removal of an assigned audience with `AccessError(:immutable_audience)`.
+  Rejection rolls back the entire metadata batch, graph change, or ingestion.
+
   The concrete database engine is resolved automatically from the configured
   repository's Ecto adapter:
 
@@ -29,11 +34,12 @@ defmodule MnemosyneEcto.Backend do
 
   Callbacks whose behaviour spec includes `{:error, ...}` returns
   (`apply_changeset`, `get_ingestion`, `commit_ingestion`, `delete_nodes`,
-  `find_candidates`, `get_nodes_by_type`) catch exceptions and return
+  `find_candidates`, `get_nodes_by_type`, `update_metadata`) catch exceptions and return
   `{:error, StorageError.t()}`. `commit_ingestion` returns `IngestionError` for a
-  durable source conflict instead. Callbacks that
-  only define `{:ok, ...}` returns (`get_node`, `get_linked_nodes`,
-  `get_metadata`, `update_metadata`, `delete_metadata`) let exceptions
+  durable source conflict instead. `apply_changeset`, `commit_ingestion`, and
+  `update_metadata` return `AccessError` for immutable audience violations.
+  Callbacks that only define `{:ok, ...}` returns (`get_node`, `get_linked_nodes`,
+  `get_metadata`, `delete_metadata`) let exceptions
   propagate, as the caller is expected to handle crashes via supervision.
   """
 
@@ -44,6 +50,7 @@ defmodule MnemosyneEcto.Backend do
   require Logger
 
   alias Mnemosyne.Errors.Framework.StorageError
+  alias Mnemosyne.Errors.Invalid.AccessError
   alias Mnemosyne.Errors.Invalid.IngestionError
   alias Mnemosyne.Graph.Edge
   alias Mnemosyne.Graph.Node, as: NodeProtocol
@@ -150,6 +157,7 @@ defmodule MnemosyneEcto.Backend do
         state.repo.transaction(fn -> persist_changeset(changeset, state) end)
         |> case do
           {:ok, _} -> {:ok, state}
+          {:error, %AccessError{} = error} -> {:error, error}
           {:error, reason} -> {:error, storage_error(:apply_changeset, reason)}
         end
 
@@ -319,35 +327,13 @@ defmodule MnemosyneEcto.Backend do
   def update_metadata(entries, state) when map_size(entries) == 0, do: {:ok, state}
 
   def update_metadata(entries, state) do
-    now = DateTime.utc_now()
-    source = MetadataQueries.source(state)
-
-    rows =
-      Enum.map(entries, fn {node_id, %NodeMetadata{} = meta} ->
-        %{
-          tenant_id: state.tenant_id,
-          node_id: node_id,
-          access_count: meta.access_count,
-          last_accessed_at: meta.last_accessed_at,
-          created_at: meta.created_at || now,
-          cumulative_reward: meta.cumulative_reward,
-          reward_count: meta.reward_count
-        }
-      end)
-
-    replace_fields = [
-      :access_count,
-      :last_accessed_at,
-      :cumulative_reward,
-      :reward_count
-    ]
-
-    state.repo.insert_all(source, rows,
-      on_conflict: {:replace, replace_fields},
-      conflict_target: [:tenant_id, :node_id]
-    )
-
-    {:ok, state}
+    case state.repo.transaction(fn -> upsert_metadata(entries, state) end) do
+      {:ok, _} -> {:ok, state}
+      {:error, %AccessError{} = error} -> {:error, error}
+      {:error, reason} -> {:error, storage_error(:update_metadata, reason)}
+    end
+  rescue
+    exception -> {:error, storage_error(:update_metadata, exception)}
   end
 
   @impl true
@@ -416,6 +402,7 @@ defmodule MnemosyneEcto.Backend do
     {:ok, status, receipt, state}
   end
 
+  defp normalize_commit_result({:error, %AccessError{} = error}, _state), do: {:error, error}
   defp normalize_commit_result({:error, %IngestionError{} = error}, _state), do: {:error, error}
   defp normalize_commit_result({:error, %StorageError{} = error}, _state), do: {:error, error}
 
@@ -574,6 +561,8 @@ defmodule MnemosyneEcto.Backend do
         %{
           tenant_id: state.tenant_id,
           node_id: node_id,
+          audience: encode_term(meta.audience),
+          custom: meta.custom,
           access_count: meta.access_count,
           last_accessed_at: meta.last_accessed_at,
           created_at: meta.created_at || now,
@@ -582,17 +571,31 @@ defmodule MnemosyneEcto.Backend do
         }
       end)
 
-    replace_fields = [
-      :access_count,
-      :last_accessed_at,
-      :cumulative_reward,
-      :reward_count
-    ]
+    on_conflict =
+      from m in source,
+        where: is_nil(m.audience) or m.audience == fragment("EXCLUDED.audience"),
+        update: [
+          set: [
+            audience: fragment("EXCLUDED.audience"),
+            custom: fragment("EXCLUDED.custom"),
+            access_count: fragment("EXCLUDED.access_count"),
+            last_accessed_at: fragment("EXCLUDED.last_accessed_at"),
+            cumulative_reward: fragment("EXCLUDED.cumulative_reward"),
+            reward_count: fragment("EXCLUDED.reward_count")
+          ]
+        ]
 
-    state.repo.insert_all(source, rows,
-      on_conflict: {:replace, replace_fields},
-      conflict_target: [:tenant_id, :node_id]
-    )
+    {count, _} =
+      state.repo.insert_all(source, rows,
+        on_conflict: on_conflict,
+        conflict_target: [:tenant_id, :node_id]
+      )
+
+    if count != length(rows) do
+      state.repo.rollback(AccessError.exception(reason: :immutable_audience))
+    end
+
+    :ok
   end
 
   defp fetch_metadata_map([], _state), do: %{}
@@ -622,6 +625,8 @@ defmodule MnemosyneEcto.Backend do
 
   defp row_to_node_metadata(row) do
     %NodeMetadata{
+      audience: decode_term(row.audience),
+      custom: row.custom || %{},
       access_count: row.access_count,
       last_accessed_at: row.last_accessed_at,
       created_at: row.created_at,
@@ -629,6 +634,12 @@ defmodule MnemosyneEcto.Backend do
       reward_count: row.reward_count
     }
   end
+
+  defp encode_term(nil), do: nil
+  defp encode_term(value), do: :erlang.term_to_binary(value, [:deterministic])
+
+  defp decode_term(nil), do: nil
+  defp decode_term(value), do: :erlang.binary_to_term(value, [:safe])
 
   defp storage_error(operation, reason) do
     %StorageError{operation: operation, reason: reason}

@@ -14,6 +14,7 @@ defmodule MnemosyneEcto.Schema.Ingestion do
     field :tenant_id, :string, primary_key: true
     field :repo_id, :string, primary_key: true
     field :source_id, :string, primary_key: true
+    field :audience, :binary
     field :payload_digest, :binary
     field :fingerprint_version, :integer
     field :node_ids, {:array, :string}

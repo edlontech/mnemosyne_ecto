@@ -1,5 +1,5 @@
 defmodule MnemosyneEcto.Migrations do
-  @current_version 1
+  @current_version 2
 
   @moduledoc """
   Database-agnostic migrations for MnemosyneEcto tables and indexes.
@@ -7,23 +7,27 @@ defmodule MnemosyneEcto.Migrations do
   Write one migration in your application. `MnemosyneEcto.Adapter` emits the
   correct DDL for PostgreSQL with pgvector or SQLite with sqlite-vec. V1 creates
   all three dynamically prefixed tables: graph nodes, node metadata, and permanent
-  ingestion records.
+  ingestion records. V2 adds immutable audiences and JSON caller metadata.
 
   ## Usage
 
       defmodule MyApp.Repo.Migrations.AddMnemosyne do
         use Ecto.Migration
 
-        def up, do: MnemosyneEcto.Migrations.up(version: 1, embedding_dimensions: 1536)
+        def up, do: MnemosyneEcto.Migrations.up(version: 2, embedding_dimensions: 1536)
         def down, do: MnemosyneEcto.Migrations.down(version: 1)
       end
 
-  ## Clean-break reset
+  ## Upgrading V1
 
-  V1 was rewritten for durable ingestion records. Existing MnemosyneEcto tables
-  or databases from pre-ingestion versions must be dropped and recreated. The
-  current version remains `1`; there is no V2 upgrade, data conversion, session
-  compatibility, or dual read/write path.
+  Add a new application migration calling `up(version: 2)` and `down(version: 2)`.
+  Supply the same `:prefix` as the original migration. V2 preserves existing nodes
+  and ingestion records; legacy audiences remain nil and custom metadata reads
+  as an empty map. Run V2 before starting the updated backend.
+
+  Pre-ingestion schemas predating the rewritten V1 are not supported by this
+  upgrade. Rolling back V2 removes audience labels and custom metadata; do not
+  reopen formerly protected data without reviewing its access configuration.
 
   ## Options
 
@@ -51,7 +55,8 @@ defmodule MnemosyneEcto.Migrations do
   alias MnemosyneEcto.Adapter
 
   @version_modules %{
-    1 => MnemosyneEcto.Migrations.V1
+    1 => MnemosyneEcto.Migrations.V1,
+    2 => MnemosyneEcto.Migrations.V2
   }
 
   @doc "Returns the current migration version."
@@ -99,7 +104,11 @@ defmodule MnemosyneEcto.Migrations do
       module.down(opts)
     end)
 
-    if version <= 1, do: adapter.teardown(prefix)
+    if version <= 1 do
+      adapter.teardown(prefix)
+    else
+      adapter.set_version(prefix, version - 1)
+    end
 
     :ok
   end

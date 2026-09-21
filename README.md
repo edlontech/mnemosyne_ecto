@@ -73,8 +73,8 @@ Write a single migration. The correct DDL for your repo's adapter is emitted aut
 defmodule MyApp.Repo.Migrations.AddMnemosyne do
   use Ecto.Migration
 
-  def up, do: MnemosyneEcto.Migrations.up(version: 1, embedding_dimensions: 1536)
-  def down, do: MnemosyneEcto.Migrations.down(version: 1)
+  def up, do: MnemosyneEcto.Migrations.up(version: 2, embedding_dimensions: 1536)
+  def down, do: MnemosyneEcto.Migrations.down(version: 2)
 end
 ```
 
@@ -82,7 +82,7 @@ end
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `:version` | `1` | Target migration version |
+| `:version` | `2` | Target migration version |
 | `:embedding_dimensions` | -- (required) | Dimensionality of your embedding vectors |
 | `:prefix` | `"mnemosyne_"` | Table name prefix |
 | `:index_type` | `:hnsw` | **PostgreSQL only**: `:hnsw` or `:ivfflat` |
@@ -157,10 +157,10 @@ The configured prefix creates three tables:
 | Table | Purpose |
 |-------|---------|
 | `#{prefix}nodes` | Graph nodes with JSON data, vector embedding, and JSON links. |
-| `#{prefix}node_metadata` | Access and reward metadata for graph nodes. |
+| `#{prefix}node_metadata` | Access/reward statistics, immutable audiences, and caller-owned custom metadata. |
 | `#{prefix}ingestions` | Permanent ingestion records keyed by `tenant_id`, `repo_id`, and `source_id`. |
 
-Each ingestion record stores the payload digest, fingerprint version, ordered node IDs, and a microsecond-precision stored timestamp. It intentionally has no graph foreign key: receipt node IDs are historical output, so the receipt remains valid when graph nodes are deleted, decayed, consolidated, or repaired.
+Each ingestion record stores the payload digest, fingerprint version, audience, ordered node IDs, and a microsecond-precision stored timestamp. It intentionally has no graph foreign key: receipt node IDs are historical output, so the receipt remains valid when graph nodes are deleted, decayed, consolidated, or repaired.
 
 On PostgreSQL, vector indexes (HNSW or IVFFlat) are created per node type via partial indexes, avoiding the performance penalty of post-filtering across the full table. On SQLite, similarity search is an exact brute-force scan.
 
