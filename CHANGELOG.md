@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/edlontech/mnemosyne_ecto/compare/mnemosyne_ecto-v0.2.0...mnemosyne_ecto-v0.3.0) (2026-09-21)
+
+
+### Features
+
+* persist audience and custom metadata ([4a18f52](https://github.com/edlontech/mnemosyne_ecto/commit/4a18f5201bcf3d501a0dd050ffb910ea7f1f0f3e))
+
 ## [0.2.0](https://github.com/edlontech/mnemosyne_ecto/compare/mnemosyne_ecto-v0.0.1...mnemosyne_ecto-v0.2.0) (2026-08-26)
 
 
