@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/edlontech/mnemosyne_ecto/compare/mnemosyne_ecto-v0.3.0...mnemosyne_ecto-v0.4.0) (2026-09-25)
+
+
+### Features
+
+* Added support to forget ingestion ([00a3222](https://github.com/edlontech/mnemosyne_ecto/commit/00a32220d02561e55ab60e8cc9941530fb598b2a))
+
 ## [0.3.0](https://github.com/edlontech/mnemosyne_ecto/compare/mnemosyne_ecto-v0.2.0...mnemosyne_ecto-v0.3.0) (2026-09-21)
 
 
