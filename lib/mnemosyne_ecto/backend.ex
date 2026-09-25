@@ -7,10 +7,12 @@ defmodule MnemosyneEcto.Backend do
   receipts are stored in separate tables.
 
   `get_ingestion/2` returns the scoped durable record or `nil` without changing
-  backend state. `commit_ingestion/3` atomically arbitrates a scoped source record
-  and its graph changes. New sources return `:inserted`; equal digest and fingerprint retries
-  return `:existing` with the original durable receipt and do not apply the
-  supplied graph. Conflicting retries return `IngestionError`, while database or
+  backend state. `delete_ingestion/2` removes only the scoped source record, leaving
+  graph deletion to the caller. `commit_ingestion/3` atomically arbitrates a scoped
+  source record and its graph changes. New sources return `:inserted`; equal
+  digest and fingerprint retries return `:existing` with the original durable
+  receipt without applying the supplied graph. Conflicting retries return
+  `IngestionError`, while database or
   graph persistence failures return `StorageError`.
 
   Node audiences and caller-owned custom metadata persist across all write paths.
@@ -33,7 +35,7 @@ defmodule MnemosyneEcto.Backend do
   ## Error handling
 
   Callbacks whose behaviour spec includes `{:error, ...}` returns
-  (`apply_changeset`, `get_ingestion`, `commit_ingestion`, `delete_nodes`,
+  (`apply_changeset`, `get_ingestion`, `commit_ingestion`, `delete_ingestion`, `delete_nodes`,
   `find_candidates`, `get_nodes_by_type`, `update_metadata`) catch exceptions and return
   `{:error, StorageError.t()}`. `commit_ingestion` returns `IngestionError` for a
   durable source conflict instead. `apply_changeset`, `commit_ingestion`, and
@@ -106,6 +108,28 @@ defmodule MnemosyneEcto.Backend do
         end
 
       {result, %{record_count: record_count}, Map.put(metadata, :status, status)}
+    end)
+  end
+
+  @impl true
+  def delete_ingestion(source_id, state) do
+    metadata = %{tenant_id: state.tenant_id, repo_id: state.repo_id, source_id: source_id}
+
+    Telemetry.span(:delete_ingestion, metadata, fn ->
+      result =
+        try do
+          state
+          |> IngestionQueries.for_source(source_id)
+          |> state.repo.delete_all()
+
+          {:ok, state}
+        rescue
+          exception ->
+            Logger.error("delete_ingestion failed: #{Exception.message(exception)}")
+            {:error, storage_error(:delete_ingestion, exception)}
+        end
+
+      {result, %{status: if(match?({:ok, _}, result), do: :ok, else: :error)}}
     end)
   end
 

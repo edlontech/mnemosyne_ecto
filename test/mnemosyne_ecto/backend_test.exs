@@ -317,6 +317,57 @@ defmodule MnemosyneEcto.BackendTest do
     end
   end
 
+  describe "delete_ingestion/2" do
+    test "frees a source ID for a different ingestion while leaving its nodes untouched", %{
+      state: state
+    } do
+      node = make_semantic("forget-node")
+      changeset = %Changeset{additions: [node], links: [], metadata: %{}}
+      record = ingestion_record("forget-source", [node.id])
+
+      assert {:ok, :inserted, _, ^state} = Backend.commit_ingestion(record, changeset, state)
+      assert {:ok, ^state} = Backend.delete_ingestion(record.source_id, state)
+      assert {:ok, nil, ^state} = Backend.get_ingestion(record.source_id, state)
+      assert {:ok, %Semantic{id: "forget-node"}, ^state} = Backend.get_node(node.id, state)
+
+      replacement = ingestion_record(record.source_id, [], payload_digest: <<1, 2, 3>>)
+      empty = %Changeset{additions: [], links: [], metadata: %{}}
+
+      assert {:ok, :inserted, _, ^state} = Backend.commit_ingestion(replacement, empty, state)
+      assert {:ok, ^replacement, ^state} = Backend.get_ingestion(record.source_id, state)
+    end
+
+    test "deletion is scoped to tenant and repository, and missing sources are harmless", %{
+      state: state
+    } do
+      record = ingestion_record("shared-forget-source", [])
+      empty = %Changeset{additions: [], links: [], metadata: %{}}
+
+      states = [state, %{state | tenant_id: "other-tenant"}, %{state | repo_id: "other-repo"}]
+
+      Enum.each(states, fn scoped_state ->
+        assert {:ok, :inserted, _, ^scoped_state} =
+                 Backend.commit_ingestion(record, empty, scoped_state)
+      end)
+
+      assert {:ok, ^state} = Backend.delete_ingestion(record.source_id, state)
+      assert {:ok, ^state} = Backend.delete_ingestion(record.source_id, state)
+      assert {:ok, nil, ^state} = Backend.get_ingestion(record.source_id, state)
+
+      Enum.each(tl(states), fn scoped_state ->
+        assert {:ok, ^record, ^scoped_state} =
+                 Backend.get_ingestion(record.source_id, scoped_state)
+      end)
+    end
+
+    test "normalizes deletion errors", %{state: state} do
+      missing_table_state = %{state | prefix: "missing_"}
+
+      assert {:error, %StorageError{operation: :delete_ingestion}} =
+               Backend.delete_ingestion("forget-source", missing_table_state)
+    end
+  end
+
   describe "apply_changeset/2 + get_node/2" do
     test "inserts nodes and retrieves them", %{state: state} do
       node = make_semantic("sem-1")

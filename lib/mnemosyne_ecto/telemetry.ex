@@ -15,6 +15,13 @@ defmodule MnemosyneEcto.Telemetry do
     * **Stop metadata:** start metadata plus `%{status: :found | :missing | :error}`
     * **Extra stop measurements:** `%{record_count: 0 | 1}`
 
+  ### `[:mnemosyne_ecto, :delete_ingestion]`
+
+  Emitted when removing a scoped durable ingestion record.
+
+    * **Start metadata:** `%{tenant_id: String.t(), repo_id: String.t(), source_id: String.t()}`
+    * **Stop metadata:** start metadata plus `%{status: :ok | :error}`
+
   ### `[:mnemosyne_ecto, :commit_ingestion]`
 
   Emitted when atomically committing an ingestion record and its graph changes.
