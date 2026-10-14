@@ -21,9 +21,9 @@ defmodule MnemosyneEcto.Migrations.V1 do
 
     datetime_type = adapter.timestamp_column_type()
 
-    nodes_table = :"#{prefix}nodes"
-    metadata_table = :"#{prefix}node_metadata"
-    ingestions_table = :"#{prefix}ingestions"
+    nodes_table = "#{prefix}nodes"
+    metadata_table = "#{prefix}node_metadata"
+    ingestions_table = "#{prefix}ingestions"
 
     adapter.setup(opts)
 
@@ -75,8 +75,8 @@ defmodule MnemosyneEcto.Migrations.V1 do
   def down(opts) do
     prefix = Keyword.get(opts, :prefix, "mnemosyne_")
 
-    drop_if_exists table(:"#{prefix}ingestions")
-    drop_if_exists table(:"#{prefix}node_metadata")
-    drop_if_exists table(:"#{prefix}nodes")
+    drop_if_exists table("#{prefix}ingestions")
+    drop_if_exists table("#{prefix}node_metadata")
+    drop_if_exists table("#{prefix}nodes")
   end
 end

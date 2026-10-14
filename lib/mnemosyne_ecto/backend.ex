@@ -478,7 +478,11 @@ defmodule MnemosyneEcto.Backend do
       )
 
     source = NodeQueries.source(state)
-    state.repo.insert_all(source, rows)
+
+    state.repo.insert_all(source, rows,
+      on_conflict: {:replace, [:type, :data, :embedding, :links]},
+      conflict_target: [:id]
+    )
   end
 
   defp apply_links([], _state), do: :ok
@@ -663,6 +667,9 @@ defmodule MnemosyneEcto.Backend do
   defp encode_term(value), do: :erlang.term_to_binary(value, [:deterministic])
 
   defp decode_term(nil), do: nil
+
+  # Decodes terms this module wrote via encode_term/1; `:safe` blocks atom creation.
+  # sobelow_skip ["Misc.BinToTerm"]
   defp decode_term(value), do: :erlang.binary_to_term(value, [:safe])
 
   defp storage_error(operation, reason) do

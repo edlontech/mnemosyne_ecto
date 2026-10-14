@@ -185,9 +185,8 @@ defmodule MnemosyneEcto.TelemetryTest do
   end
 
   test "commit_ingestion emits an error stop for normalized storage failures", %{state: state} do
-    node = semantic_node("duplicate-node")
-    seed_changeset = %Changeset{additions: [node], links: [], metadata: %{}}
-    assert {:ok, ^state} = Backend.apply_changeset(seed_changeset, state)
+    node = %{semantic_node("invalid-node") | created_at: nil}
+    failing_changeset = %Changeset{additions: [node], links: [], metadata: %{}}
 
     record = ingestion_record("commit-error-source", [node.id])
 
@@ -198,7 +197,7 @@ defmodule MnemosyneEcto.TelemetryTest do
     ])
 
     assert {:error, %StorageError{operation: :commit_ingestion}} =
-             Backend.commit_ingestion(record, seed_changeset, state)
+             Backend.commit_ingestion(record, failing_changeset, state)
 
     assert_receive {:telemetry, [:mnemosyne_ecto, :commit_ingestion, :start], start_measurements,
                     start_metadata}

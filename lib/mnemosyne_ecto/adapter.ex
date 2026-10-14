@@ -46,7 +46,7 @@ defmodule MnemosyneEcto.Adapter do
   @callback timestamp_column_type() :: atom()
 
   @doc "Creates engine-specific vector indexes for the nodes table. May be a no-op (e.g. SQLite brute-force)."
-  @callback create_vector_indexes(table :: atom(), opts :: keyword()) :: any()
+  @callback create_vector_indexes(table :: String.t(), opts :: keyword()) :: any()
 
   @doc "Reads the currently migrated schema version for the given prefix. Returns 0 when unmigrated."
   @callback migrated_version(repo :: Ecto.Repo.t(), prefix :: String.t()) :: non_neg_integer()

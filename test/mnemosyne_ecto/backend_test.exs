@@ -209,21 +209,21 @@ defmodule MnemosyneEcto.BackendTest do
     end
 
     test "graph failure rolls back the provisional record and every mutation", %{state: state} do
-      existing = make_semantic("duplicate-node", proposition: "original")
+      existing = make_semantic("existing-node", proposition: "original")
       seed_changeset = %Changeset{additions: [existing], links: [], metadata: %{}}
       assert {:ok, ^state} = Backend.apply_changeset(seed_changeset, state)
 
       leaked = make_tag("rolled-back-node")
-      duplicate = make_semantic(existing.id, proposition: "replacement")
+      invalid = make_semantic("invalid-node", created_at: nil)
       leaked_metadata = NodeMetadata.new(access_count: 5, created_at: @created_at)
 
       failing_changeset = %Changeset{
-        additions: [leaked, duplicate],
+        additions: [leaked, invalid],
         links: [{existing.id, leaked.id, :membership}],
         metadata: %{leaked.id => leaked_metadata}
       }
 
-      record = ingestion_record("rolled-back-source", [leaked.id, duplicate.id])
+      record = ingestion_record("rolled-back-source", [leaked.id, invalid.id])
 
       assert {:error, %StorageError{operation: :commit_ingestion}} =
                Backend.commit_ingestion(record, failing_changeset, state)
@@ -381,6 +381,27 @@ defmodule MnemosyneEcto.BackendTest do
 
     test "returns nil for nonexistent node", %{state: state} do
       assert {:ok, nil, _state} = Backend.get_node("nonexistent", state)
+    end
+
+    test "re-adding an existing id replaces content and keeps created_at", %{state: state} do
+      original = make_semantic("sem-1", embedding: [0.1, 0.2, 0.3])
+      changeset = %Changeset{additions: [original], links: [], metadata: %{}}
+      assert {:ok, state} = Backend.apply_changeset(changeset, state)
+
+      updated =
+        make_semantic("sem-1",
+          proposition: "merged fact",
+          embedding: [0.9, 0.8, 0.7],
+          created_at: ~U[2030-01-01 00:00:00.000000Z]
+        )
+
+      changeset = %Changeset{additions: [updated], links: [], metadata: %{}}
+      assert {:ok, state} = Backend.apply_changeset(changeset, state)
+
+      assert {:ok, %Semantic{} = stored, _state} = Backend.get_node("sem-1", state)
+      assert stored.proposition == "merged fact"
+      assert Enum.map(stored.embedding, &Float.round(&1, 3)) == [0.9, 0.8, 0.7]
+      assert stored.created_at == @created_at
     end
 
     test "inserts multiple node types", %{state: state} do

@@ -7,12 +7,12 @@ defmodule MnemosyneEcto.Migrations.V2 do
   def up(opts) do
     prefix = Keyword.get(opts, :prefix, "mnemosyne_")
 
-    alter table(:"#{prefix}node_metadata") do
+    alter table("#{prefix}node_metadata") do
       add :audience, :binary
       add :custom, :map, null: false, default: %{}
     end
 
-    alter table(:"#{prefix}ingestions") do
+    alter table("#{prefix}ingestions") do
       add :audience, :binary
     end
   end
@@ -22,11 +22,11 @@ defmodule MnemosyneEcto.Migrations.V2 do
   def down(opts) do
     prefix = Keyword.get(opts, :prefix, "mnemosyne_")
 
-    alter table(:"#{prefix}ingestions") do
+    alter table("#{prefix}ingestions") do
       remove :audience
     end
 
-    alter table(:"#{prefix}node_metadata") do
+    alter table("#{prefix}node_metadata") do
       remove :custom
       remove :audience
     end
