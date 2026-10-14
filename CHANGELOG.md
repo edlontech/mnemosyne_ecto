@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/edlontech/mnemosyne_ecto/compare/mnemosyne_ecto-v0.4.0...mnemosyne_ecto-v0.4.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* **nodes-update:** Fixed nodes update in the case of a intention merge ([d0e978a](https://github.com/edlontech/mnemosyne_ecto/commit/d0e978a934d01292526fea4c06faf3e9013c4ae3))
+
 ## [0.4.0](https://github.com/edlontech/mnemosyne_ecto/compare/mnemosyne_ecto-v0.3.0...mnemosyne_ecto-v0.4.0) (2026-09-25)
 
 
