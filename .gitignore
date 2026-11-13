@@ -113,3 +113,5 @@ tmp/*
 priv/sqlite
 
 # End of https://www.toptal.com/developers/gitignore/api/elixir,erlang,macos,visualstudiocode,vim
+
+priv/sqlite_vec

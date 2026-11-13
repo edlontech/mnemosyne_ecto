@@ -9,7 +9,7 @@ This library implements the `Mnemosyne.GraphBackend` behaviour and runs on eithe
 | Engine | Ecto adapter | Vector support | Required dep |
 |--------|--------------|----------------|--------------|
 | **PostgreSQL** | `Ecto.Adapters.Postgres` | [pgvector](https://github.com/pgvector/pgvector) (HNSW / IVFFlat) | `:pgvector` |
-| **SQLite** | `Ecto.Adapters.SQLite3` | [sqlite-vec](https://github.com/asg017/sqlite-vec) (brute-force cosine) | `:sqlite_vec` |
+| **SQLite** | `Ecto.Adapters.SQLite3` | [sqlite-vec](https://github.com/asg017/sqlite-vec) (brute-force cosine) | `:ecto_sqlite3` |
 
 The active engine is resolved at runtime from `repo.__adapter__()`. Engine-specific vector columns, similarity queries, migrations, and extension setup live behind `MnemosyneEcto.Adapter`.
 
@@ -25,13 +25,12 @@ def deps do
     {:pgvector, "~> 0.3"},
 
     # For SQLite:
-    {:ecto_sqlite3, "~> 0.24"},
-    {:sqlite_vec, "~> 0.1"}
+    {:ecto_sqlite3, "~> 0.24"}
   ]
 end
 ```
 
-`:pgvector` and `:sqlite_vec` are optional dependencies of `mnemosyne_ecto`; include only the ones for the engine you use.
+`:pgvector` and `:ecto_sqlite3` are optional dependencies of `mnemosyne_ecto`; include only the ones for the engine you use. The `sqlite-vec` extension binary is downloaded automatically when `mnemosyne_ecto` compiles alongside `:ecto_sqlite3`.
 
 ## Choosing a database
 
@@ -60,7 +59,7 @@ The `sqlite-vec` extension must be loaded on **every** connection via the repo's
 ```elixir
 config :my_app, MyApp.Repo,
   database: "my_app.db",
-  load_extensions: [SqliteVec.path()]
+  load_extensions: [MnemosyneEcto.SqliteVec.path()]
 ```
 
 ## Setup

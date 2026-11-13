@@ -13,6 +13,7 @@ defmodule MnemosyneEcto.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       elixirc_paths: elixirc_paths(Mix.env()),
+      compilers: Mix.compilers() ++ [:sqlite_vec],
       aliases: aliases()
     ]
   end
@@ -51,11 +52,11 @@ defmodule MnemosyneEcto.MixProject do
       {:assert_eventually, "~> 1.0", only: :test},
       {:mimic, "~> 2.0", only: :test},
       {:mix_audit, ">= 0.0.0", only: [:dev, :test], runtime: false},
-      {:mnemosyne, "~> 0.6"},
+      {:mnemosyne, "~> 0.8"},
+      {:octo_fetch, "~> 0.4.0"},
       {:oeditus_credo, "~> 0.8", only: [:dev], runtime: false},
       {:pgvector, "~> 0.3", optional: true},
       {:postgrex, ">= 0.0.0", optional: true},
-      {:sqlite_vec, "~> 0.1", optional: true},
       {:recode, "~> 0.8", only: [:dev, :test], runtime: false},
       {:splode, "~> 0.3"},
       {:sycophant, "~> 0.1", only: [:dev, :test]},
@@ -68,11 +69,21 @@ defmodule MnemosyneEcto.MixProject do
 
   defp aliases do
     [
+      "compile.sqlite_vec": &download_sqlite_vec/1,
       "ecto.setup": ["ecto.create", "ecto.migrate"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
       "test.integration": ["test --only integration"]
     ]
+  end
+
+  # Fetches the sqlite-vec loadable extension, only for projects using SQLite.
+  defp download_sqlite_vec(_args) do
+    if Code.ensure_loaded?(Exqlite) do
+      MnemosyneEcto.SqliteVec.download!(Path.join(__DIR__, "priv/sqlite_vec"))
+    end
+
+    :ok
   end
 
   defp docs do
@@ -104,7 +115,8 @@ defmodule MnemosyneEcto.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => "https://github.com/edlontech/mnemosyne_ecto"},
-      files: ~w(lib priv mix.exs README.md CHANGELOG.md LICENSE .formatter.exs)
+      files: ~w(lib priv mix.exs README.md CHANGELOG.md LICENSE .formatter.exs),
+      exclude_patterns: [~r"^priv/sqlite_vec", ~r"^priv/sqlite(/|$)"]
     ]
   end
 end

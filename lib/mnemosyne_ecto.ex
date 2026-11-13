@@ -44,7 +44,7 @@ defmodule MnemosyneEcto do
         use Ecto.Repo, otp_app: :my_app, adapter: Ecto.Adapters.SQLite3
       end
 
-      config :my_app, MyApp.Repo, load_extensions: [SqliteVec.path()]
+      config :my_app, MyApp.Repo, load_extensions: [MnemosyneEcto.SqliteVec.path()]
 
   ## Setup
 

@@ -3,7 +3,7 @@ defmodule MnemosyneEcto.Migrations.V1 do
   use Ecto.Migration
 
   # The Postgres/SQLite adapters are conditionally compiled based on the presence
-  # of their optional deps (pgvector / sqlite_vec). `for_repo/1` dynamically
+  # of their optional deps (pgvector / ecto_sqlite3). `for_repo/1` dynamically
   # dispatches to the adapter for the repo's Ecto adapter, so referencing the
   # module here is safe even when it wasn't compiled for this project; silence
   # the resulting "module is not available" warnings for projects that don't use

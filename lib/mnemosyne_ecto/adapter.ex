@@ -79,7 +79,7 @@ defmodule MnemosyneEcto.Adapter do
 
     MnemosyneEcto supports:
       * Ecto.Adapters.Postgres (requires :pgvector)
-      * Ecto.Adapters.SQLite3  (requires :sqlite_vec)
+      * Ecto.Adapters.SQLite3  (requires :ecto_sqlite3)
     """
   end
 end
