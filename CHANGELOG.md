@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0](https://github.com/edlontech/mnemosyne_ecto/compare/mnemosyne_ecto-v0.4.1...mnemosyne_ecto-v0.5.0) (2026-11-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **deps:** You need to change the Sqlite vec extension
+
+### Bug Fixes
+
+* **backend:** run KNN per query and tag vector in find_candidates ([215933d](https://github.com/edlontech/mnemosyne_ecto/commit/215933ddb504145767318a03a9ec8dd4e58925f8))
+* **deps:** Updated mnemosyne and inlined sqlvec ([ad15f8f](https://github.com/edlontech/mnemosyne_ecto/commit/ad15f8fca188d59b64c3b9cfc1b12d55c7afdaf9))
+
 ## [0.4.1](https://github.com/edlontech/mnemosyne_ecto/compare/mnemosyne_ecto-v0.4.0...mnemosyne_ecto-v0.4.1) (2026-10-14)
 
 
