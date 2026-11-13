@@ -633,6 +633,27 @@ defmodule MnemosyneEcto.BackendTest do
       assert score > 0.0
     end
 
+    test "finds tag matches outside the query vector search limit", %{state: state} do
+      query_nodes = for i <- 1..2, do: make_tag("query-#{i}", embedding: [0.8, 0.0, 0.6])
+      tag_node = make_tag("tag-match", embedding: [0.0, 1.0, 0.0])
+      cs = %Changeset{additions: [tag_node | query_nodes], links: [], metadata: %{}}
+      assert {:ok, state} = Backend.apply_changeset(cs, state)
+
+      vf_config = %{module: Mnemosyne.ValueFunction.Default, params: %{tag: %{top_k: 1}}}
+
+      assert {:ok, [{%Tag{id: "tag-match"}, score}], _} =
+               Backend.find_candidates(
+                 [:tag],
+                 [1.0, 0.0, 0.0],
+                 [[0.0, 1.0, 0.0]],
+                 vf_config,
+                 [],
+                 state
+               )
+
+      assert score > 0.0
+    end
+
     test "deduplicates across types", %{state: state} do
       sem = make_semantic("dual-1", embedding: [0.5, 0.5, 0.0])
 

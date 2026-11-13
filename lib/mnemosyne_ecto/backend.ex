@@ -232,8 +232,12 @@ defmodule MnemosyneEcto.Backend do
             limit = top_k * 2
 
             rows =
-              state.adapter.vector_search(state, type, query_embedding, limit)
-              |> state.repo.all()
+              [query_embedding | tag_embeddings]
+              |> Enum.flat_map(fn embedding ->
+                state.adapter.vector_search(state, type, embedding, limit)
+                |> state.repo.all()
+              end)
+              |> Enum.uniq_by(& &1.id)
 
             {type, rows}
           end)
